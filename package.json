@@ -1,0 +1,30 @@
+{
+  "name": "envdiff",
+  "version": "1.0.0",
+  "description": "Compare .env files. Find missing variables before they break your deploy.",
+  "main": "dist/index.js",
+  "bin": {
+    "envdiff": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test dist/test.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "env",
+    "dotenv",
+    "diff",
+    "compare",
+    "ci"
+  ],
+  "author": "Muin",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
