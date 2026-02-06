@@ -27,6 +27,8 @@ npx envdiff .env.example .env
 
 ## Usage
 
+### Compare Mode
+
 Basic comparison:
 
 ```bash
@@ -49,6 +51,61 @@ Strict mode (exits with code 1 if differences found):
 
 ```bash
 envdiff .env.example .env --strict
+```
+
+### Template Generation Mode (NEW!)
+
+Generate .env from .env.example template:
+
+```bash
+envdiff --template .env.example .env
+```
+
+**What it does:**
+- Creates `.env` from `.env.example`
+- Preserves comments and structure
+- Generates smart placeholders based on variable names
+- Protects against accidental overwrites
+
+**Smart Placeholders:**
+```bash
+# .env.example
+DATABASE_URL=postgresql://user:pass@localhost:5432/db
+API_KEY=sk-xxxxxxxxxxxxx
+PORT=3000
+DEBUG_MODE=false
+
+# Generated .env (smart placeholders)
+DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+API_KEY=your-api-key-here
+PORT=3000
+DEBUG_MODE=false
+```
+
+**Overwrite existing file:**
+```bash
+envdiff --template .env.example .env --overwrite
+```
+
+**Custom placeholder:**
+```bash
+envdiff --template .env.example .env --placeholder "TODO"
+```
+
+**Typical workflow:**
+```bash
+# 1. Clone a new project
+git clone https://github.com/user/project
+cd project
+
+# 2. Generate .env from template
+envdiff --template .env.example .env
+
+# 3. Edit .env with your actual values
+nano .env
+
+# 4. Verify you have all required variables
+envdiff .env.example .env
 ```
 
 ## CI Integration
