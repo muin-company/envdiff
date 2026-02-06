@@ -14,6 +14,8 @@ Usage:
 
 Compare Mode:
   --show-values    Show actual values (default: masked)
+  --color          Enhanced visual diff with colors and side-by-side view
+  --no-color       Disable colored output
   --strict         Exit with code 1 if any differences found
   --json           Output as JSON
 
@@ -28,6 +30,7 @@ Examples:
   envdiff .env.example .env
   envdiff .env.staging .env.production --show-values
   envdiff .env.example .env --strict --json
+  envdiff .env.local .env.production --color --show-values
 
   # Generate .env from template
   envdiff --template .env.example .env
@@ -60,6 +63,8 @@ function main() {
   const showValues = args.includes('--show-values');
   const strict = args.includes('--strict');
   const json = args.includes('--json');
+  const color = args.includes('--color');
+  const noColor = args.includes('--no-color');
 
   if (files.length < 2) {
     console.error('Error: Two file paths required');
@@ -88,8 +93,12 @@ function main() {
     const output = formatDiff(diff, {
       showValues,
       json,
+      color,
+      noColor,
       file1Map: file1,
       file2Map: file2,
+      file1Path,
+      file2Path,
     });
 
     console.log(output);
