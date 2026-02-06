@@ -100,28 +100,231 @@ Options:
 
 ## Examples
 
-Check if your .env has everything from .env.example:
+### Example 1: Perfect match (no differences)
 
 ```bash
-envdiff .env.example .env
+$ envdiff .env.example .env
+
+Comparing .env.example → .env
+
+✓ All variables match!
+
+Variables in both files: 12
+Missing: 0
+Extra: 0
 ```
 
-Compare staging and production configs:
+Exit code: 0 (safe to deploy)
+
+### Example 2: Missing variables in target
 
 ```bash
-envdiff .env.staging .env.production
+$ envdiff .env.example .env
+
+Comparing .env.example → .env
+
+⚠️ Missing variables in .env:
+
+  - DATABASE_POOL_SIZE
+  - REDIS_URL
+  - SENTRY_DSN
+
+⚠️ 3 variables from .env.example are missing in .env
+
+Variables in .env.example: 15
+Variables in .env: 12
 ```
 
-Use in a script:
+Exit code: 1 (blocks deployment in CI)
+
+### Example 3: Extra variables (not in example)
 
 ```bash
-if envdiff .env.example .env --strict --json > diff.json; then
-  echo "All good"
+$ envdiff .env.example .env
+
+Comparing .env.example → .env
+
+✓ All required variables present
+
+ℹ️ Extra variables in .env (not in .env.example):
+
+  - DEBUG_MODE
+  - LOCAL_OVERRIDE_API
+  - EXPERIMENTAL_FEATURE_FLAG
+
+These might be intentional or leftover from testing.
+```
+
+Helps identify obsolete variables.
+
+### Example 4: Comparing staging vs production
+
+```bash
+$ envdiff .env.staging .env.production
+
+Comparing .env.staging → .env.production
+
+⚠️ Missing variables in .env.production:
+
+  - FEATURE_FLAG_NEW_UI
+  - MOCK_PAYMENT_GATEWAY
+
+ℹ️ Extra variables in .env.production:
+
+  - STRIPE_WEBHOOK_SECRET
+  - CLOUDFLARE_API_KEY
+
+⚠️ 2 variables from .env.staging are missing in .env.production
+ℹ️ 2 extra variables in .env.production
+```
+
+Catch environment-specific configuration drift.
+
+### Example 5: Show actual values (dangerous!)
+
+```bash
+$ envdiff .env.staging .env.production --show-values
+
+Comparing .env.staging → .env.production
+
+Variables with different values:
+
+  DATABASE_URL
+    .env.staging:    postgres://staging-db:5432/app
+    .env.production: postgres://prod-db:5432/app
+
+  NODE_ENV
+    .env.staging:    staging
+    .env.production: production
+
+  API_RATE_LIMIT
+    .env.staging:    100
+    .env.production: 1000
+
+⚠️ 3 variables have different values
+```
+
+**Warning:** Only use `--show-values` in secure environments. Never log secrets!
+
+### Example 6: JSON output for automation
+
+```bash
+$ envdiff .env.example .env --json
+
+{
+  "file1": ".env.example",
+  "file2": ".env",
+  "missing": [
+    "DATABASE_POOL_SIZE",
+    "REDIS_URL",
+    "SENTRY_DSN"
+  ],
+  "extra": [
+    "DEBUG_MODE"
+  ],
+  "different": [],
+  "totalFile1": 15,
+  "totalFile2": 13,
+  "missingCount": 3,
+  "extraCount": 1,
+  "differentCount": 0
+}
+```
+
+Use with jq for custom processing:
+
+```bash
+$ envdiff .env.example .env --json | jq -r '.missing[]'
+DATABASE_POOL_SIZE
+REDIS_URL
+SENTRY_DSN
+
+# Post to Slack
+$ MISSING=$(envdiff .env.example .env --json | jq '.missingCount')
+$ if [ $MISSING -gt 0 ]; then
+    curl -X POST $SLACK_WEBHOOK -d "{\"text\":\"⚠️ $MISSING env vars missing!\"}"
+  fi
+```
+
+### Example 7: CI pipeline integration
+
+```bash
+# .github/workflows/deploy.yml
+- name: Validate environment variables
+  run: |
+    npx envdiff .env.example .env.production --strict
+    
+# If differences exist, exit code 1 → workflow fails
+```
+
+Practical script for pre-deployment check:
+
+```bash
+#!/bin/bash
+# scripts/check-env.sh
+
+echo "🔍 Checking environment variables..."
+
+if npx envdiff .env.example .env --strict; then
+  echo "✅ Environment configuration is valid"
+  exit 0
 else
-  echo "Missing variables found"
-  cat diff.json
+  echo "❌ Environment variables are incomplete!"
+  echo ""
+  echo "Fix by:"
+  echo "  1. Copy missing variables from .env.example"
+  echo "  2. Set appropriate values for your environment"
+  echo "  3. Run this script again"
+  exit 1
 fi
 ```
+
+### Example 8: Error handling
+
+```bash
+$ envdiff .env.example .env.missing
+
+Error: File not found: .env.missing
+
+Make sure both files exist:
+  - .env.example ✓
+  - .env.missing ✗
+
+Exit code: 1
+
+$ envdiff .env.malformed .env
+
+Error: Failed to parse .env.malformed
+Line 5: Invalid syntax (no = sign)
+
+FOO=bar
+BAZ=qux
+INVALID LINE HERE  ← Parse error
+
+Fix the syntax and try again.
+```
+
+### Example 9: Value masking (default behavior)
+
+```bash
+$ envdiff .env.staging .env.production
+
+Comparing .env.staging → .env.production
+
+Variables with different values:
+
+  DATABASE_PASSWORD
+    .env.staging:    ********
+    .env.production: ********
+
+  API_KEY
+    .env.staging:    ********
+    .env.production: ********
+
+⚠️ 2 variables have different values (values masked for security)
+```
+
+Values are masked by default to prevent accidental secret exposure in logs.
 
 ## Real-World Examples
 
