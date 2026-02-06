@@ -33,10 +33,22 @@ Basic comparison:
 envdiff .env.example .env
 ```
 
+Enhanced visual diff with colors:
+
+```bash
+envdiff .env.example .env --color
+```
+
 Show actual values (careful with secrets):
 
 ```bash
 envdiff .env.staging .env.production --show-values
+```
+
+Visual diff with actual values:
+
+```bash
+envdiff .env.local .env.production --color --show-values
 ```
 
 JSON output for scripts:
@@ -45,11 +57,28 @@ JSON output for scripts:
 envdiff .env.example .env --json
 ```
 
+Disable colors (for CI/CD logs):
+
+```bash
+envdiff .env.example .env --no-color
+```
+
 Strict mode (exits with code 1 if differences found):
 
 ```bash
 envdiff .env.example .env --strict
 ```
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `--show-values` | Show actual values instead of masked (⚠️ careful with secrets) |
+| `--color` | Enhanced visual diff with colors, icons, and side-by-side comparison |
+| `--no-color` | Disable all colored output (useful for CI/CD logs) |
+| `--strict` | Exit with code 1 if any differences found (for CI/CD) |
+| `--json` | Output as JSON for programmatic parsing |
+| `-h, --help` | Show help message |
 
 ## CI Integration
 
@@ -180,7 +209,51 @@ Comparing .env.staging → .env.production
 
 Catch environment-specific configuration drift.
 
-### Example 5: Show actual values (dangerous!)
+### Example 5: Enhanced Visual Diff (--color)
+
+```bash
+$ envdiff .env.example .env --color
+
+╔════════════════════════════════════════════════════════════╗
+║  Environment File Diff                                     ║
+╚════════════════════════════════════════════════════════════╝
+
+Comparing:
+  ◀ .env.example
+  ▶ .env
+
+Summary:
+  ⊖ 2 missing (in ◀ but not ▶)
+  ⊕ 1 extra (in ▶ but not ◀)
+  ≠ 3 different (different values)
+
+⊖ Missing Variables (in ◀ but not ▶)
+────────────────────────────────────────────────────────────
+  ✗ DATABASE_POOL_SIZE = 10
+  ✗ REDIS_URL = re***db
+
+⊕ Extra Variables (in ▶ but not ◀)
+────────────────────────────────────────────────────────────
+  ✓ DEBUG_MODE = tr***se
+
+≠ Different Values
+────────────────────────────────────────────────────────────
+  ~ API_URL
+    ◀ ht***om
+    ▶ ht***io
+
+  ~ DATABASE_HOST
+    ◀ lo***st
+    ▶ pr***om
+
+  ~ LOG_LEVEL
+    ◀ debug
+    ▶ error
+```
+
+Perfect for visual review and debugging configuration issues!
+
+### Example 6: Show actual values (dangerous!)
 
 ```bash
 $ envdiff .env.staging .env.production --show-values
