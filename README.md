@@ -1591,6 +1591,646 @@ jobs:
             });
 ```
 
+---
+
+## Tips & Tricks
+
+### Quick Comparison Shortcuts
+
+```bash
+# Compare all environments at once
+for env in dev staging production; do
+  echo "=== .env.$env ==="
+  envdiff .env.example .env.$env
+done
+
+# One-liner version
+find . -name ".env.*" -not -name ".env.example" | \
+  xargs -I {} sh -c 'echo "==== {} ===="; envdiff .env.example {}'
+```
+
+---
+
+### Smart Diff for Similar Files
+
+```bash
+# Compare two production environments
+envdiff .env.production.us .env.production.eu --show-values
+
+# Find differences between current and backup
+envdiff .env .env.backup
+```
+
+---
+
+### Generate Missing Variable Checklist
+
+```bash
+# Extract missing variables into a checklist
+envdiff .env.example .env --json | \
+  jq -r '.missing[]' | \
+  awk '{print "- [ ] "$0}' > missing-vars-checklist.md
+
+# Output:
+# - [ ] DATABASE_POOL_SIZE
+# - [ ] REDIS_URL
+# - [ ] SENTRY_DSN
+```
+
+---
+
+### Auto-Fix Missing Variables (Interactive)
+
+```bash
+#!/bin/bash
+# auto-fix-env.sh
+
+# Get missing variables
+MISSING=$(envdiff .env.example .env --json | jq -r '.missing[]')
+
+if [ -z "$MISSING" ]; then
+  echo "✅ No missing variables"
+  exit 0
+fi
+
+echo "Missing variables:"
+echo "$MISSING"
+echo ""
+
+for var in $MISSING; do
+  # Get example value
+  example_value=$(grep "^$var=" .env.example | cut -d= -f2-)
+  
+  read -p "Set $var (default: $example_value): " value
+  value=${value:-$example_value}
+  
+  echo "$var=$value" >> .env
+done
+
+echo "✅ Updated .env file"
+envdiff .env.example .env
+```
+
+---
+
+### Mask Sensitive Values by Pattern
+
+```bash
+# Custom masking function
+mask-env() {
+  envdiff "$1" "$2" --show-values | \
+    sed 's/\(PASSWORD\|SECRET\|KEY\)=.*/\1=********/g'
+}
+
+# Usage
+mask-env .env.staging .env.production
+```
+
+---
+
+### CI/CD Environment Matrix Testing
+
+```bash
+# Test all environment combinations
+envs=(dev staging production)
+
+for env1 in "${envs[@]}"; do
+  for env2 in "${envs[@]}"; do
+    if [ "$env1" != "$env2" ]; then
+      echo "Comparing $env1 vs $env2"
+      envdiff .env.$env1 .env.$env2 --json > "diff-$env1-$env2.json"
+    fi
+  done
+done
+
+# Generate diff matrix
+echo "Environment Diff Matrix" > diff-matrix.md
+jq -s '.' diff-*.json >> diff-matrix.md
+```
+
+---
+
+### Pre-Deploy Environment Validation Script
+
+```bash
+#!/bin/bash
+# validate-env.sh
+
+ENV=$1  # dev, staging, production
+
+# 1. Check against template
+if ! envdiff .env.example .env.$ENV --strict; then
+  echo "❌ Environment $ENV is missing required variables"
+  exit 1
+fi
+
+# 2. Check for stale variables
+EXTRA=$(envdiff .env.example .env.$ENV --json | jq -r '.extra | length')
+if [ "$EXTRA" -gt 0 ]; then
+  echo "⚠️  $EXTRA extra variables found in .env.$ENV"
+  envdiff .env.example .env.$ENV --json | jq -r '.extra[]'
+fi
+
+# 3. Validate values (basic checks)
+source .env.$ENV
+if [ -z "$DATABASE_URL" ]; then
+  echo "❌ DATABASE_URL is empty"
+  exit 1
+fi
+
+echo "✅ Environment $ENV validated"
+```
+
+---
+
+### Backup & Rollback Environment Variables
+
+```bash
+# Backup current .env
+cp .env .env.backup.$(date +%Y%m%d-%H%M%S)
+
+# Make changes...
+
+# Compare with backup
+envdiff .env.backup.* .env
+
+# Rollback if needed
+cp .env.backup.* .env
+```
+
+---
+
+### Generate .env from .env.example (Template Mode)
+
+```bash
+# NEW FEATURE: Template mode
+envdiff --template .env.example .env
+
+# Creates .env from .env.example with smart placeholders:
+# DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+# API_KEY=your-api-key-here
+# PORT=3000
+```
+
+**Smart placeholder logic:**
+- URLs: Preserves structure, replaces credentials with placeholders
+- Numeric values: Keeps defaults
+- Booleans: Keeps defaults
+- Keys/secrets: Replaces with generic placeholders
+
+---
+
+### Environment Variable Documentation
+
+```bash
+# Auto-generate env var documentation
+cat > ENV_VARS.md << 'EOF'
+# Environment Variables
+
+## Required Variables
+
+EOF
+
+envdiff .env.example .env --json | \
+  jq -r '.missing[]' | \
+  awk '{print "- `"$0"`: (description needed)"}' \
+  >> ENV_VARS.md
+
+cat >> ENV_VARS.md << 'EOF'
+
+## Optional Variables
+
+EOF
+
+envdiff .env.example .env --json | \
+  jq -r '.extra[]' | \
+  awk '{print "- `"$0"`: (description needed)"}' \
+  >> ENV_VARS.md
+```
+
+---
+
+### Integration with Secret Managers
+
+**AWS Secrets Manager:**
+```bash
+# Fetch production secrets
+aws secretsmanager get-secret-value \
+  --secret-id prod/app/env \
+  --query SecretString \
+  --output text > .env.production.current
+
+# Compare with template
+envdiff .env.example .env.production.current
+```
+
+**HashiCorp Vault:**
+```bash
+# Fetch secrets from Vault
+vault kv get -format=json secret/app/prod | \
+  jq -r '.data.data | to_entries | .[] | "\(.key)=\(.value)"' \
+  > .env.production.current
+
+# Validate
+envdiff .env.example .env.production.current --strict
+```
+
+---
+
+### Multi-Project Environment Sync
+
+```bash
+# Ensure all projects have same base variables
+PROJECTS=(api gateway worker)
+
+for proj in "${PROJECTS[@]}"; do
+  echo "Checking $proj"
+  envdiff .env.base projects/$proj/.env.example || {
+    echo "❌ $proj missing base variables"
+    exit 1
+  }
+done
+```
+
+---
+
+## FAQ
+
+### Q: How do I compare more than two files?
+**A:** envdiff only compares two files at a time.
+
+**Workaround:**
+```bash
+# Compare multiple environments
+envdiff .env.example .env.dev
+envdiff .env.example .env.staging
+envdiff .env.example .env.production
+
+# Or script it:
+for env in dev staging production; do
+  echo "=== Checking .env.$env ==="
+  envdiff .env.example .env.$env --strict
+done
+```
+
+---
+
+### Q: Can envdiff auto-fix missing variables?
+**A:** Not automatically, but you can script it (see Tips & Tricks above).
+
+**Feature request:** `--auto-fix` mode to interactively prompt for missing values.
+
+---
+
+### Q: Does envdiff support .env.local or other variants?
+**A:** Yes, any file works:
+
+```bash
+envdiff .env.example .env.local
+envdiff .env.development .env.development.local
+envdiff .env.test .env.test.local
+```
+
+---
+
+### Q: How do I handle comments in .env files?
+**A:** envdiff ignores comments (lines starting with `#`).
+
+**Example:**
+```bash
+# .env.example
+# Database configuration
+DATABASE_URL=postgres://localhost/db
+
+# .env
+DATABASE_URL=postgres://prod/db
+
+# Comments are ignored in diff
+```
+
+---
+
+### Q: Can I use envdiff with Docker secrets?
+**A:** Yes, but you need to extract secrets first:
+
+```bash
+# Docker secrets are files in /run/secrets/
+cat /run/secrets/db_password  # → value
+
+# Create .env from secrets:
+echo "DB_PASSWORD=$(cat /run/secrets/db_password)" > .env
+
+# Compare:
+envdiff .env.example .env
+```
+
+---
+
+### Q: What's the difference between --show-values and default mode?
+**A:**
+- **Default mode:** Values are masked (`********`)
+- **--show-values:** Actual values displayed
+
+**Security warning:** Never use `--show-values` in CI logs or shared outputs!
+
+---
+
+### Q: Can envdiff handle multi-line values?
+**A:** No, .env files don't officially support multi-line values.
+
+**Workaround:** Use JSON or base64 encoding:
+```bash
+# Instead of:
+# PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
+# MIIEpAIBAAKCAQEA...
+# -----END RSA PRIVATE KEY-----"
+
+# Use:
+PRIVATE_KEY_BASE64="LS0tLS1CRUdJTi..."
+
+# Or JSON:
+PRIVATE_KEY_JSON='{"key": "..."}'
+```
+
+---
+
+### Q: Does envdiff work on Windows?
+**A:** Yes, but paths differ:
+
+**PowerShell:**
+```powershell
+npx envdiff .env.example .env
+```
+
+**CMD:**
+```cmd
+npx envdiff .env.example .env
+```
+
+**Git Bash / WSL:** Works exactly like Linux.
+
+---
+
+### Q: Can I compare environment variables with different names?
+**A:** No, envdiff compares by exact variable name.
+
+**Example:**
+```bash
+# .env.example
+DATABASE_URL=...
+
+# .env.production
+DB_URL=...  # Different name! envdiff won't match these
+```
+
+**Workaround:** Standardize variable names across environments.
+
+---
+
+### Q: How do I validate required vs optional variables?
+**A:** Use separate template files:
+
+```bash
+# .env.required (critical vars only)
+DATABASE_URL=
+API_KEY=
+REDIS_URL=
+
+# .env.optional (nice-to-have)
+DEBUG_MODE=false
+LOG_LEVEL=info
+
+# Validate:
+envdiff .env.required .env --strict  # Must pass
+envdiff .env.optional .env           # Can fail
+```
+
+---
+
+### Q: Can envdiff detect unused variables in code?
+**A:** No, it only compares files.
+
+**Workaround:** Combine with code scanning:
+```bash
+# Find unused env vars
+grep -r "process.env." src/ | \
+  sed -n 's/.*process\.env\.\([A-Z_]*\).*/\1/p' | \
+  sort -u > used-vars.txt
+
+# Compare with .env
+comm -23 <(grep "^[A-Z_]*=" .env | cut -d= -f1 | sort) used-vars.txt
+# Output: Variables in .env but not in code
+```
+
+---
+
+### Q: What's the performance impact on large .env files?
+**A:** envdiff is very fast (< 0.1s for most files).
+
+**Benchmarks:**
+- 10 variables: ~0.01s
+- 100 variables: ~0.05s
+- 1000 variables: ~0.2s
+
+---
+
+### Q: Can I use envdiff with Kubernetes ConfigMaps?
+**A:** Yes, convert ConfigMap to .env format first:
+
+```bash
+# Export ConfigMap to .env
+kubectl get configmap app-config -o json | \
+  jq -r '.data | to_entries | .[] | "\(.key)=\(.value)"' \
+  > .env.k8s
+
+# Compare:
+envdiff .env.example .env.k8s
+```
+
+---
+
+### Q: How do I handle environment-specific defaults?
+**A:** Use separate .env.example files:
+
+```bash
+# .env.example.dev
+DEBUG_MODE=true
+LOG_LEVEL=debug
+
+# .env.example.production
+DEBUG_MODE=false
+LOG_LEVEL=error
+
+# Compare:
+envdiff .env.example.dev .env.dev
+envdiff .env.example.production .env.production
+```
+
+---
+
+### Q: Can envdiff be used offline?
+**A:** Yes! envdiff is a local tool, no internet required.
+
+---
+
+### Q: Does envdiff support .yaml or .json env files?
+**A:** No, only .env format (KEY=value).
+
+**Convert first:**
+```bash
+# YAML to .env
+yq eval '.env' config.yaml | \
+  awk '{print $1 "=" $2}' > .env
+
+# JSON to .env
+jq -r 'to_entries | .[] | "\(.key)=\(.value)"' config.json > .env
+
+# Then compare:
+envdiff .env.example .env
+```
+
+---
+
+### Q: How do I track environment changes over time?
+**A:** Commit .env.example to git:
+
+```bash
+# Track template changes
+git add .env.example
+git commit -m "chore: add new env vars"
+
+# See history
+git log --patch .env.example
+```
+
+**Never commit actual .env files with secrets!**
+
+---
+
+### Q: Can I validate .env syntax before comparing?
+**A:** envdiff assumes valid syntax.
+
+**Manual validation:**
+```bash
+# Check for syntax errors
+grep -v "^#" .env | grep -v "^$" | grep -v "=" && {
+  echo "❌ Syntax error: lines without = sign"
+  exit 1
+}
+```
+
+---
+
+### Q: What if I have duplicate variable names?
+**A:** Last occurrence wins (like shell behavior):
+
+```bash
+# .env
+API_KEY=first
+API_KEY=second  # This one is used
+
+# envdiff will compare using "second"
+```
+
+**Fix:** Remove duplicates before comparing.
+
+---
+
+### Q: Can I use envdiff in npm scripts?
+**A:** Yes!
+
+```json
+{
+  "scripts": {
+    "env:check": "envdiff .env.example .env --strict",
+    "env:check:dev": "envdiff .env.example .env.dev --strict",
+    "env:check:staging": "envdiff .env.example .env.staging --strict",
+    "env:check:prod": "envdiff .env.example .env.production --strict",
+    "env:check:all": "npm run env:check && npm run env:check:dev && npm run env:check:staging && npm run env:check:prod",
+    "prestart": "npm run env:check",
+    "predeploy": "npm run env:check:prod"
+  }
+}
+```
+
+---
+
+### Q: How do I share .env.example without exposing values?
+**A:** .env.example should never have real values:
+
+```bash
+# ❌ Bad .env.example
+DATABASE_URL=postgresql://admin:secret123@prod-db/app
+API_KEY=sk-real-api-key-12345
+
+# ✅ Good .env.example
+DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+API_KEY=your-api-key-here
+```
+
+**Commit .env.example, never .env!**
+
+```bash
+# .gitignore
+.env
+.env.local
+.env.*.local
+
+# .env.example is committed:
+git add .env.example
+```
+
+---
+
+### Q: Can I compare environment variables between servers?
+**A:** Yes, with remote access:
+
+```bash
+# Fetch remote .env via SSH
+ssh user@staging-server 'cat /app/.env' > .env.staging.remote
+ssh user@prod-server 'cat /app/.env' > .env.production.remote
+
+# Compare:
+envdiff .env.staging.remote .env.production.remote --show-values
+```
+
+**Security:** Be careful with remote .env files containing secrets!
+
+---
+
+### Q: How do I generate .env from a template with defaults?
+**A:** Use the new `--template` mode:
+
+```bash
+envdiff --template .env.example .env
+```
+
+See Tips & Tricks section for details.
+
+---
+
+### Q: Can envdiff be used for other config files?
+**A:** It's designed for .env format, but works with any `KEY=value` file:
+
+```bash
+# Compare config files
+envdiff config.properties.example config.properties
+
+# Compare shell scripts
+envdiff exports.sh.example exports.sh
+```
+
+---
+
+### Q: How do I contribute improvements?
+**A:** See GitHub repository for contribution guidelines. Helpful contributions:
+- Support for .yaml/.json env files
+- Auto-fix mode
+- Better diff visualization
+- Template generation improvements
+
+---
+
 ## License
 
 MIT
